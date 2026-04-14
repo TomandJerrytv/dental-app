@@ -484,6 +484,7 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
 
       {/* ── Camera feed ── */}
       <Webcam ref={camRef} audio={false}
+        key={facingMode}
         videoConstraints={{ facingMode: facingMode, width:{ideal:3840}, height:{ideal:2160} }}
         style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}
         mirrored={false}/>

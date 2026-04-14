@@ -209,7 +209,8 @@ export default function Calibration({ navigate, patient }) {
       {step === 'live' && (
         <div style={{ flex:1, display:'flex', flexDirection:'column', background:'#000', position:'relative', minHeight:480 }}>
           <Webcam ref={camRef} audio={false}
-            videoConstraints={{ facingMode:'user', width:{ ideal:3840 }, height:{ ideal:2160 } }}
+            key={facingMode}
+            videoConstraints={{ facingMode: facingMode, width:{ ideal:3840 }, height:{ ideal:2160 } }}
             style={{ width:'100%', flex:1, objectFit:'cover' }}
             mirrored={false}/>
 
