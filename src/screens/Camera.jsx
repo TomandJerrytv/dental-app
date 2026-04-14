@@ -19,8 +19,8 @@ const R_EYE_BOT = 374   // Right lower eyelid
 
 // ── Distance gate — IPD in pixels ────────────────────────────────
 // Wide range to accommodate laptop (70px at 90cm) and phone (180px at 50cm)
-const IPD_MIN = 65
-const IPD_MAX = 200
+const IPD_MIN = 60
+const IPD_MAX = 500
 const IPD_MM  = 63   // Average Indian adult IPD — fallback calibration only
 
 // ── Face orientation thresholds ───────────────────────────────────
@@ -143,6 +143,7 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
   const isRest = mode === 'rest'
   const hasCal = pxPerMm != null
   const accent = isRest ? '#0D9488' : '#E91E8C'
+  const [facingMode, setFacingMode] = useState('environment')
 
   // Keep refs in sync with props
   useEffect(() => { pxPerMmRef.current  = pxPerMm        }, [pxPerMm])
@@ -470,12 +471,20 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
             {hasCal ? '📐 Card calibrated' : '⚠️ No calibration — IPD fallback'}
           </div>
         </div>
-        <div style={{ width:36 }}/>
+        <button onClick={()=>{ wipe(); setFacingMode(f => f==='environment'?'user':'environment') }}
+          style={{ background:'rgba(255,255,255,0.15)', border:'none', borderRadius:'50%', width:36, height:36,
+            display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#fff' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M20 7h-3a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="13" r="3"/>
+            <path d="M9 7V5M15 7V5"/>
+          </svg>
+        </button>
       </div>
 
       {/* ── Camera feed ── */}
       <Webcam ref={camRef} audio={false}
-        videoConstraints={{ facingMode:'user', width:{ ideal:1920 }, height:{ ideal:1080 } }}
+        videoConstraints={{ facingMode: facingMode, width:{ideal:3840}, height:{ideal:2160} }}
         style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}
         mirrored={false}/>
 
