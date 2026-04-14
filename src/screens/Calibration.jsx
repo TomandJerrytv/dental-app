@@ -15,6 +15,7 @@ export default function Calibration({ navigate, patient }) {
   const imgNatRef = useRef({ w:1280, h:720 })
 
   const [step,    setStep]    = useState('intro')
+  const [facingMode, setFacingMode] = useState('environment')
   const [imgData, setImgData] = useState(null)
   const [imgNat,  setImgNat]  = useState({ w:1280, h:720 })
   const [pts,     setPts]     = useState([])       // for display only
@@ -208,7 +209,7 @@ export default function Calibration({ navigate, patient }) {
       {step === 'live' && (
         <div style={{ flex:1, display:'flex', flexDirection:'column', background:'#000', position:'relative', minHeight:480 }}>
           <Webcam ref={camRef} audio={false}
-            videoConstraints={{ facingMode:'user', width:{ ideal:1920 }, height:{ ideal:1080 } }}
+            videoConstraints={{ facingMode:'user', width:{ ideal:3840 }, height:{ ideal:2160 } }}
             style={{ width:'100%', flex:1, objectFit:'cover' }}
             mirrored={false}/>
 
@@ -241,6 +242,10 @@ export default function Calibration({ navigate, patient }) {
           <div style={{ padding:'12px 16px 24px', background:'rgba(0,0,0,0.85)', backdropFilter:'blur(6px)' }}>
             <div style={{ display:'flex', gap:10 }}>
               <button className="btn btn-ghost" onClick={() => setStep('intro')} style={{ flex:1, borderRadius:12, fontSize:12 }}>← BACK</button>
+              <button onClick={()=> setFacingMode(f => f==='environment'?'user':'environment')}
+                style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:12, padding:'0 14px', cursor:'pointer', color:'#fff', fontSize:12, fontWeight:700 }}>
+                🔄 CAM
+              </button>
               <button className="btn btn-primary" onClick={captureFrame} style={{ flex:2, borderRadius:12, fontSize:13 }}>CAPTURE FRAME</button>
             </div>
           </div>
