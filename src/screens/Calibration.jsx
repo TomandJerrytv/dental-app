@@ -212,7 +212,15 @@ export default function Calibration({ navigate, patient }) {
             key={facingMode}
             videoConstraints={{ facingMode: facingMode, width:{ ideal:3840 }, height:{ ideal:2160 } }}
             style={{ width:'100%', flex:1, objectFit:'cover' }}
-            mirrored={false}/>
+            mirrored={false}
+            onUserMedia={(stream) => {
+              const track = stream.getVideoTracks()[0]
+              const settings = track?.getSettings()
+              if (settings?.width && settings?.height) {
+                setImgNat({ w: settings.width, h: settings.height })
+              }
+            }}
+          />
 
           {/* Card position guide — at nose/cheek level (middle-right of frame) */}
           <div style={{ position:'absolute', inset:0, pointerEvents:'none' }}>
