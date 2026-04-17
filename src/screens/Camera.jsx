@@ -1,3 +1,4 @@
+// Camera.jsx
 import { useEffect, useRef, useState } from 'react'
 import Webcam from 'react-webcam'
 
@@ -46,10 +47,12 @@ const MM_CEIL       = 90    // Reject readings above this — anatomically impos
 const SD_WITH_CAL    = 0.60  // mm — lock when SD < this (calibrated mode)
 const SD_WITHOUT_CAL = 1.40  // mm — lock when SD < this (IPD fallback mode)
 
-// ── OCC position lock tolerances ─────────────────────────────────
-// FIX: was 0.012 — breathing moves nose ~1.5%, so 0.012 caused constant resets
-const IPD_LOCK_TOL  = 8     // ± pixels from REST baseline IPD
-const NOSE_LOCK_TOL = 0.022 // ± fraction of frame height for nose Y
+// ── PHASE 3: Per-frame live scaling parameters ──
+const PMM_SMOOTH_WINDOW         = 5    // Rolling window for pxPerMm smoothing
+const PMM_SMOOTH_WINDOW_GLASSES = 15   // Extended window when glasses detected
+const PMM_OUTLIER_THRESHOLD     = 0.08 // Reject frames where pxPerMm deviates >8% from rolling mean
+// ── PHASE 4: Best-frame retrospective capture ──
+const FRAME_BUF_MAX = 150   // ~30fps × 5 seconds — metadata only (~7.5 KB total)
 
 // ─────────────────────────────────────────────────────────────────
 // Kalman 1D optimal filter
@@ -111,9 +114,10 @@ function detectChinBlocked(lm) {
 //   mode             'rest' | 'occ'
 //   patient          { name, age, gender, notes }
 //   pxPerMm          From credit card calibration (null = IPD fallback)
-//   positionBaseline From REST capture — used to lock OCC position
+//   positionBaseline From REST capture — retained in props but position lock removed (PHASE 3)
+//   ipdMm            Patient's true IPD in mm from calibration (PHASE 3)
 // ─────────────────────────────────────────────────────────────────
-export default function Camera({ navigate, mode, patient, pxPerMm, positionBaseline }) {
+export default function Camera({ navigate, mode, patient, pxPerMm, positionBaseline, calibrationResolution, ipdMm }) {
   const camRef    = useRef(null)
   const canvasRef = useRef(null)
   const lmkRef    = useRef(null)
@@ -125,8 +129,26 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
   const lockedRef    = useRef(null)
   const pxPerMmRef   = useRef(pxPerMm)
   const baselineRef  = useRef(positionBaseline)
+  const calibResRef  = useRef(calibrationResolution)   // PHASE 1
+  const ipdMmRef     = useRef(ipdMm)                   // PHASE 3: patient's true IPD for per-frame scaling
   const snapRef      = useRef({ ipdPx: null, noseY: null, faceArea: null })
   const estimatesRef = useRef([])    // Rolling buffer of last 20 Kalman estimates
+
+  // ── PHASE 3: Rolling buffer of recent pxPerMm_live values ──
+  // Smooths per-frame scale against landmark jitter.
+  // Window expands when glasses detected (more jitter).
+  const pmmLiveBufferRef = useRef([])
+
+  // ── FIX 1: Add missing refs for IPD measurement ──
+  // PHASE 3: Measure patient's true IPD in mm during first frames of REST
+  // Collect IPD_px / pmmCorrected over first 10 valid frames, then lock the mean
+  // as the patient's IPD_mm reference. Used for per-frame live scaling thereafter.
+  const ipdSamplesRef  = useRef([])
+  const ipdMeasuredRef = useRef(null)   // Set once, then stable for session
+  // ── PHASE 4: Best-frame metadata buffer ──
+  // Stores ~50 bytes per frame × 150 frames = ~7.5 KB total (not images)
+  const frameBufRef = useRef([])
+
 
   // React state — for UI updates only
   const [loading,   setLoading]   = useState(true)
@@ -139,21 +161,42 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
   const [liveMM,    setLiveMM]    = useState(null)
   const [warnGlass, setWarnGlass] = useState(false)
   const [warnBlock, setWarnBlock] = useState(false)
+  const [warnCalib, setWarnCalib] = useState(false)   // PHASE 1: IPD sanity check
+  const [ipdMmDisplay, setIpdMmDisplay] = useState(null)   // PHASE 1: live IPD in mm
 
   const isRest = mode === 'rest'
   const hasCal = pxPerMm != null
   const accent = isRest ? '#0D9488' : '#E91E8C'
   const [facingMode, setFacingMode] = useState('environment')
 
+
   // Keep refs in sync with props
   useEffect(() => { pxPerMmRef.current  = pxPerMm        }, [pxPerMm])
   useEffect(() => { baselineRef.current = positionBaseline}, [positionBaseline])
+  useEffect(() => { calibResRef.current = calibrationResolution }, [calibrationResolution])   // PHASE 1
 
-  // Reset all measurement state (face lost, moved, or re-scan requested)
+  // ── FIX 2: Initialize ipdMeasuredRef from prop (for OCC mode) ──
+  useEffect(() => {
+    ipdMmRef.current = ipdMm
+    // PHASE 3: If ipdMm arrives from parent (OCC mode), treat it as already measured
+    if (ipdMm && !ipdMeasuredRef.current) {
+      ipdMeasuredRef.current = ipdMm
+    }
+  }, [ipdMm])
+
+  // ── FIX 5: Reset all measurement state — wipe() handles ipdSamplesRef ──
   function wipe() {
     kalmanRef.current.reset()
     framesRef.current = 0
     estimatesRef.current = []
+    pmmLiveBufferRef.current = []   // PHASE 3
+    frameBufRef.current = []   // PHASE 4
+    // PHASE 3: DO NOT clear ipdMeasuredRef on wipe — once locked for the
+    // session, the patient's IPD_mm stays valid. ipdSamplesRef cleared
+    // only if measurement hasn't been locked yet (face-lost during collection).
+    if (!ipdMeasuredRef.current) {
+      ipdSamplesRef.current = []
+    }
     lockedRef.current = null
     setLockedMM(null); setLiveMM(null); setPct(0)
   }
@@ -259,17 +302,12 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
     setWarnGlass(hasGlasses && faceOk)
     setWarnBlock(chinBlocked && faceOk && !hasGlasses)
 
-    // ── OCC position lock (only in occlusion mode) ────────────
-    // After REST, enforce that phone hasn't moved between captures.
-    // FIX: NOSE_LOCK_TOL was 0.012 — breathing moves nose ~1.5%
-    //      Increased to 0.022 so normal breathing doesn't cause constant resets
-    let posOk = true
-    const bl = baselineRef.current
-    if (!isRest && bl && faceOk) {
-      const dIPD  = Math.abs(ipd - bl.ipdPx)
-      const dNose = Math.abs(snY - bl.noseY)
-      posOk = dIPD <= IPD_LOCK_TOL && dNose <= NOSE_LOCK_TOL
-    }
+    // ── PHASE 3: Position lock REMOVED ──
+    // Previously required patient to return to exact REST distance for OCC.
+    // Per-frame live scaling makes distance irrelevant — scale auto-corrects.
+    // Yaw and pitch checks (in face validation) are retained because they
+    // protect vertical measurement axis from angular projection error.
+    const posOk = true
 
     // Save current tracking snapshot (stored when REST is captured)
     snapRef.current = {
@@ -286,13 +324,12 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
     else if (!faceOk && badPitch)             st = 'pitch'
     else if (!faceOk && badRoll)              st = 'roll'
     else if (!faceOk && badYaw)              st = 'yaw'
-    else if (!posOk)                          st = 'reposition'
     else if (lockedRef.current !== null)      st = 'ready'
     else                                      st = 'collecting'
     setStatus(st)
 
-    // Reset if face invalid or position wrong
-    if (!faceOk || !posOk) { wipe() }
+    // Reset if face invalid
+    if (!faceOk) { wipe() }
 
     // ── Measure ───────────────────────────────────────────────
     else if (lockedRef.current === null) {
@@ -302,10 +339,89 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
         const vPix  = vertPx(snY, lm[CHIN].y, H)
         const pmm   = pxPerMmRef.current
 
-        // FIX: Credit card calibration (accurate) takes priority over IPD fallback
-        // rawMM = vertical pixels ÷ (pixels per mm from card)
-        // Fallback: rawMM = (vertical pixels / IPD pixels) × 63mm average
-        const rawMM = pmm ? (vPix / pmm) : ((vPix / ipd) * IPD_MM)
+        // ── PHASE 1: PIXEL-SPACE UNIFICATION (static correction) ──
+        // Corrects for resolution drift within a session (camera switch, etc.)
+        let pmmCorrected = pmm
+        const calibRes = calibResRef.current
+        if (pmm && calibRes?.h && H && H !== calibRes.h) {
+          // ── PHASE 1 FIX: use HEIGHT ratio, not width ──
+          // VDR/VDO is a vertical measurement (vertPx uses H).
+          // Scale correction must use the same axis as the measurement.
+          // For 16:9 this equals W-ratio, but camera switches or aspect 
+          // changes can differ — height is the correct reference.
+          const scaleFactor = H / calibRes.h
+          pmmCorrected = pmm * scaleFactor
+        }
+
+        // ── FIX 3: MEASURE PATIENT'S IPD_MM DURING FIRST FRAMES ──
+        // In REST mode, on the first 10 valid frames, collect IPD in mm
+        // (using static pmmCorrected) and lock the mean as the patient's
+        // true IPD_mm reference. OCC mode inherits this via props.
+        if (isRest && pmmCorrected && ipd > 0 && !ipdMeasuredRef.current) {
+          const ipdMmSample = ipd / pmmCorrected
+          // Accept only anatomically plausible samples
+          if (ipdMmSample >= 50 && ipdMmSample <= 80) {
+            ipdSamplesRef.current.push(ipdMmSample)
+            if (ipdSamplesRef.current.length >= 10) {
+              // Lock the mean as patient's IPD_mm
+              const mean = ipdSamplesRef.current.reduce((a, b) => a + b, 0) / ipdSamplesRef.current.length
+              ipdMeasuredRef.current = parseFloat(mean.toFixed(2))
+            }
+          }
+        }
+
+        // ── PHASE 3: PER-FRAME LIVE SCALE NORMALIZATION ──────────────
+        // Once IPD_mm is locked, compute live pxPerMm every frame:
+        // pxPerMm_live = IPD_px_live / IPD_mm
+        // This makes measurement distance-independent.
+        let pmmLive = pmmCorrected
+        let usingLiveScale = false
+        const patientIpdMmLive = ipdMeasuredRef.current   // FIX 6: renamed to avoid shadowing
+
+        if (patientIpdMmLive && ipd > 0) {
+          const pmmFromIpd = ipd / patientIpdMmLive
+          const buffer = pmmLiveBufferRef.current
+
+          // Glasses present → use extended smoothing window + tighter outlier rejection
+          const windowSize = hasGlasses ? PMM_SMOOTH_WINDOW_GLASSES : PMM_SMOOTH_WINDOW
+
+          // Outlier rejection: reject frames deviating >8% from rolling mean
+          let acceptThisFrame = true
+          if (buffer.length >= 3) {
+            const rollingMean = buffer.reduce((a, b) => a + b, 0) / buffer.length
+            const deviation = Math.abs(pmmFromIpd - rollingMean) / rollingMean
+            if (deviation > PMM_OUTLIER_THRESHOLD) acceptThisFrame = false
+          }
+
+          if (acceptThisFrame) {
+            buffer.push(pmmFromIpd)
+            if (buffer.length > windowSize) buffer.shift()
+          }
+
+          if (buffer.length >= 2) {
+            pmmLive = buffer.reduce((a, b) => a + b, 0) / buffer.length
+            usingLiveScale = true
+          }
+        }
+
+        // ── PHASE 1 + 3: IPD SANITY BANNER ──────────────────────────
+        // Uses static pmmCorrected for transparency. Variable renamed
+        // to avoid shadowing React state of same name. (FIX 6)
+        if (pmmCorrected && ipd > 0) {
+          const ipdMmValue = ipd / pmmCorrected
+          setIpdMmDisplay(parseFloat(ipdMmValue.toFixed(1)))
+          setWarnCalib(ipdMmValue < 55 || ipdMmValue > 75)
+        } else {
+          setWarnCalib(false)
+          setIpdMmDisplay(null)
+        }
+
+        // ── Final rawMM: live scale (best) → static corrected → IPD fallback ──
+        const rawMM = usingLiveScale
+          ? (vPix / pmmLive)
+          : pmmCorrected
+            ? (vPix / pmmCorrected)
+            : ((vPix / ipd) * IPD_MM)
 
         // Reject biologically impossible readings
         if (rawMM >= MM_FLOOR && rawMM <= MM_CEIL) {
@@ -318,6 +434,20 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
 
           // Show live reading from frame 5 onwards
           if (framesRef.current >= 5) setLiveMM(parseFloat(estimate.toFixed(1)))
+            // ── PHASE 4: Record frame metadata for retrospective capture ──
+            frameBufRef.current.push({
+              timestamp: performance.now(),
+              kalmanValue: estimate,
+              kalmanSD: estimatesRef.current.length >= 10 ? stdDev(estimatesRef.current) : 999,
+              ipdPx: ipd,
+              noseY: snY,
+              pitch: pv,
+              yaw: yawRatio(lm[L_EYE], lm[R_EYE], lm[NOSE_TIP]),
+              roll: rollDeg(lm[L_EYE], lm[R_EYE], W, H),
+              faceArea: faceArea(lm[L_CHEEK], lm[R_CHEEK], lm[FOREHEAD], lm[CHIN]),
+              pmmLive: usingLiveScale ? pmmLive : (pmmCorrected || null),
+            })
+            if (frameBufRef.current.length > FRAME_BUF_MAX) frameBufRef.current.shift()
 
           // Update progress indicator
           setPct(Math.min(100, Math.round(framesRef.current / FRAMES_NEEDED * 100)))
@@ -414,24 +544,52 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
     const canvas = canvasRef.current
     if (!video || !canvas) return
 
-    // Composite: camera frame + canvas overlay
+    // ── PHASE 4: Best-frame retrospective capture ──
+    // Score all frames in the 5-second buffer. Pick the one with
+    // the lowest Kalman SD (most stable measurement moment).
+    // Use that frame's Kalman value as the measurement.
+    // Capture a fresh image NOW for the report photo.
+    const buf = frameBufRef.current
+    let bestValue = lockedRef.current
+    let bestSD = Infinity
+    let bestAge = '0.0'
+
+    if (buf.length > 0) {
+      const now = performance.now()
+      for (const frame of buf) {
+        if (frame.kalmanSD < bestSD) {
+          bestSD = frame.kalmanSD
+          bestValue = parseFloat(frame.kalmanValue.toFixed(1))
+          bestAge = ((now - frame.timestamp) / 1000).toFixed(1)
+        }
+      }
+    }
+
+    // Capture fresh image for report photo (current frame, not historical)
     const out = document.createElement('canvas')
     out.width = video.videoWidth; out.height = video.videoHeight
     const ctx = out.getContext('2d')
     ctx.drawImage(video, 0, 0)
     ctx.drawImage(canvas, 0, 0)
     const imageData = out.toDataURL('image/jpeg', 0.85)
-    const val = lockedRef.current
 
     setTimeout(() => {
       if (isRest) {
         navigate('after-rest', {
           imageData,
-          vdr: val,
-          positionBaseline: { ...snapRef.current },  // Lock position for OCC
+          vdr: bestValue,
+          positionBaseline: { ...snapRef.current },
+          measuredIpdMm: ipdMeasuredRef.current,
+          bestFrameSD: bestSD !== Infinity ? parseFloat(bestSD.toFixed(3)) : null,
+          bestFrameAge: bestAge,
         })
       } else {
-        navigate('after-occ', { imageData, vdo: val })
+        navigate('after-occ', {
+          imageData,
+          vdo: bestValue,
+          bestFrameSD: bestSD !== Infinity ? parseFloat(bestSD.toFixed(3)) : null,
+          bestFrameAge: bestAge,
+        })
       }
     }, 300)
   }
@@ -446,7 +604,6 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
     pitch:     { txt: 'LOOK STRAIGHT AT THE CAMERA',        bg: 'rgba(245,158,11,0.92)', tip: 'Chin too high or too low. Look directly at the camera lens.' },
     roll:      { txt: 'STRAIGHTEN YOUR HEAD',               bg: 'rgba(245,158,11,0.92)', tip: 'Head tilted sideways. Keep it upright and level.' },
     yaw:       { txt: "FACE FORWARD — DON'T TURN",          bg: 'rgba(245,158,11,0.92)', tip: 'Face turned to one side. Look directly into the camera lens.' },
-    reposition:{ txt: 'RETURN TO SAME POSITION AS REST',    bg: 'rgba(239,68,68,0.92)',  tip: 'Phone or patient moved since REST capture. Return to the same distance.' },
     collecting:{ txt: `SCANNING — ${pct}% COMPLETE`,        bg: 'rgba(245,158,11,0.92)', tip: null },
     ready:     { txt: 'MEASUREMENT LOCKED — TAP CAPTURE!',  bg: 'rgba(16,185,129,0.92)', tip: null },
   }
@@ -468,7 +625,7 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
           <div style={{ fontSize:10, marginTop:2, color: hasCal ? '#A7F3D0' : '#FCA5A5' }}>
             {isRest ? 'Step 2 of 4 — REST' : 'Step 3 of 4 — OCCLUSION'}
             {' · '}
-            {hasCal ? '📐 Card calibrated' : '⚠️ No calibration — IPD fallback'}
+            {hasCal ? '📏 Depressor calibrated' : '⚠️ No calibration — IPD fallback'}
           </div>
         </div>
         <button onClick={()=>{ wipe(); setFacingMode(f => f==='environment'?'user':'environment') }}
@@ -492,6 +649,23 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
       {/* ── Canvas overlay (face oval + landmarks + progress ring) ── */}
       <canvas ref={canvasRef}
         style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}/>
+
+      {/* ── PHASE 1: CALIBRATION SANITY CHECK BANNER ── */}
+      {/* Shows if IPD reads outside 55-75mm — likely calibration error.
+          Informational only — does NOT block measurement. */}
+      {warnCalib && !loading && ipdMmDisplay !== null && (
+        <div style={{ position:'absolute', top:90, left:16, right:16, zIndex:23, background:'rgba(220,38,38,0.97)', borderRadius:12, padding:'10px 14px', display:'flex', alignItems:'center', gap:10, boxShadow:'0 4px 16px rgba(0,0,0,0.4)' }}>
+          <span style={{ fontSize:22 }}>📐</span>
+          <div>
+            <div style={{ color:'#fff', fontSize:12, fontWeight:800 }}>
+              CALIBRATION CHECK — IPD READS {ipdMmDisplay} MM
+            </div>
+            <div style={{ color:'rgba(255,255,255,0.9)', fontSize:10, marginTop:2 }}>
+              Expected 55–75 mm. Card calibration may be inaccurate. Consider recalibrating before proceeding.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── GLASSES WARNING BANNER ── */}
       {/* Shows warning but does NOT stop measurement — dentist decides */}
@@ -536,7 +710,10 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
           {/* Calibration badge */}
           {hasCal && (
             <div style={{ background:'rgba(16,185,129,0.15)', border:'1px solid rgba(16,185,129,0.35)', borderRadius:6, padding:'3px 7px', textAlign:'center' }}>
-              <div style={{ fontSize:7, color:'#10B981', fontWeight:700 }}>📐 CALIBRATED</div>
+              <div style={{ fontSize:7, color:'#10B981', fontWeight:700 }}>🪵 CALIBRATED</div>
+              {ipdMm && (
+                <div style={{ fontSize:6, color:'#10B981', fontWeight:600, marginTop:1 }}>LIVE SCALE</div>
+              )}
             </div>
           )}
 
@@ -581,7 +758,7 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
       {/* ── Center tip overlay (for non-face-found errors) ── */}
       {!loading && showTip && (
         <div style={{ position:'absolute', top:'52%', left:'50%', transform:'translate(-50%,-50%)', zIndex:18, width:'72%' }}>
-          <div style={{ background:'rgba(0,0,0,0.92)', border:`2px solid ${['far','close','blocked','reposition'].includes(status) ? '#EF4444' : '#F59E0B'}`, borderRadius:14, padding:'14px 18px', textAlign:'center' }}>
+          <div style={{ background:'rgba(0,0,0,0.92)', border:`2px solid ${['far','close','blocked'].includes(status) ? '#EF4444' : '#F59E0B'}`, borderRadius:14, padding:'14px 18px', textAlign:'center' }}>
             <div style={{ color:'#fff', fontSize:13, fontWeight:800, marginBottom:6 }}>{s.txt}</div>
             <div style={{ color:'rgba(255,255,255,0.7)', fontSize:11, lineHeight:1.6 }}>{s.tip}</div>
           </div>

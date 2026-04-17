@@ -1,34 +1,99 @@
-// AfterCapture.jsx
-// Key additions:
-// 1. For occlusion mode: receives vdr prop and validates VDO < VDR
-// 2. Shows Indian population clinical range context
-// 3. Blocks "VIEW RESULTS" if VDO >= VDR (clinically impossible)
+// AfterCapture.jsx — Phase 4.2: Triple-capture median + Phase 5.1: Session baseline
+// Key features:
+// 1. Shows current capture + all previous captures in this set
+// 2. Up to 3 captures per mode — "CAPTURE AGAIN" until 3, then proceed
+// 3. Flags spread > 2mm as inconsistent
+// 4. For OCC: validates VDO < VDR (freeway space ≥ 1mm)
+// 5. Shows Indian population clinical range context
+// 6. Session baseline comparison against historical records
 
-export default function AfterCapture({ navigate, capture, mode, patient, vdr }) {
+import { useMemo } from 'react'
+
+const MAX_CAPTURES = 3
+const SPREAD_WARN_MM = 2
+
+function getMedian(arr) {
+  if (!arr || arr.length === 0) return null
+  const sorted = [...arr].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 !== 0 ? sorted[mid] : parseFloat(((sorted[mid - 1] + sorted[mid]) / 2).toFixed(1))
+}
+
+export default function AfterCapture({ navigate, capture, captures = [], mode, patient, vdr }) {
   const isRest = mode === 'rest'
   const value  = isRest ? capture?.vdr : capture?.vdo
   const label  = isRest ? 'VDR' : 'VDO'
 
+  // ── PHASE 4.2: Multi-capture data ─────────────────────────────
+  const captureCount = captures.length
+  const allValues = captures.map(c => isRest ? c.vdr : c.vdo).filter(v => v != null)
+  const median = getMedian(allValues)
+  const spread = allValues.length >= 2
+    ? parseFloat((Math.max(...allValues) - Math.min(...allValues)).toFixed(1))
+    : 0
+  const spreadWarn = spread > SPREAD_WARN_MM
+  const canCaptureMore = captureCount < MAX_CAPTURES
+  const hasEnoughCaptures = captureCount >= 1  // minimum 1 to proceed
+
+  // Use median for clinical checks when available, otherwise single value
+  const clinicalValue = median || value
+
   // ── VDO validation against VDR ────────────────────────────────
-  // Clinical fact: VDR must ALWAYS be > VDO (freeway space must be positive).
-  // Minimum clinical freeway space = 1 mm (Indian population reference).
-  // Normal range: 2–4 mm.
-  const freewaySpace = (!isRest && vdr && value) ? parseFloat((vdr - value).toFixed(1)) : null
-  const vdoTooHigh   = freewaySpace !== null && freewaySpace < 1    // VDO >= VDR or within 1mm
-  const vdoNegative  = freewaySpace !== null && freewaySpace < 0    // VDO > VDR (impossible)
-  const fsWarning    = freewaySpace !== null && freewaySpace < 2    // fs < 2mm = low
+  const freewaySpace = (!isRest && vdr && clinicalValue) ? parseFloat((vdr - clinicalValue).toFixed(1)) : null
+  const vdoTooHigh   = freewaySpace !== null && freewaySpace < 1
+  const vdoNegative  = freewaySpace !== null && freewaySpace < 0
+  //const fsWarning    = freewaySpace !== null && freewaySpace < 2
   const fsNormal     = freewaySpace !== null && freewaySpace >= 2 && freewaySpace <= 4
 
-  // ── Indian population clinical range check ────────────────────
+  // ── PHASE 5.1: Session baseline comparison ────────────────────
+  const baseline = useMemo(() => {
+    if (!patient?.name || !clinicalValue) return null
+    try {
+      const records = JSON.parse(localStorage.getItem('patients') || '[]')
+      const patientName = patient.name.trim().toLowerCase()
+      const history = records.filter(r =>
+        r.patient?.name?.trim().toLowerCase() === patientName
+      )
+      if (history.length === 0) return null
+
+      // Get historical values for this measurement type
+      const histValues = history
+        .map(r => isRest ? r.measurements?.vdr : r.measurements?.vdo)
+        .filter(v => v != null && v > 0)
+        .slice(0, 5)  // last 5 records max
+
+      if (histValues.length === 0) return null
+
+      const histMean = parseFloat((histValues.reduce((a, b) => a + b, 0) / histValues.length).toFixed(1))
+      const deviation = parseFloat(Math.abs(clinicalValue - histMean).toFixed(1))
+
+      return {
+        mean: histMean,
+        count: histValues.length,
+        values: histValues,
+        deviation,
+        warn: deviation > 3,
+      }
+    } catch { return null }
+  }, [patient?.name, clinicalValue, isRest])
+
+  // ── Indian population clinical range ──────────────────────────
   const gender = patient?.gender?.toLowerCase()
   const getRange = () => {
-    if (!value) return null
-    if (gender === 'male')   return { min: 52, max: 72, typical: '58–65 mm', mean: 61.4 }
-    if (gender === 'female') return { min: 46, max: 67, typical: '53–60 mm', mean: 56.7 }
-    return { min: 46, max: 72, typical: '53–65 mm', mean: 59.0 }  // unknown gender — use combined
+    if (!clinicalValue) return null
+    // REST ranges are ~2-4mm higher than OCC (freeway space)
+    if (gender === 'male') return isRest
+      ? { min: 54, max: 74, typMin: 60, typMax: 67, typical: '60–67 mm', mean: 63.4 }
+      : { min: 52, max: 72, typMin: 58, typMax: 65, typical: '58–65 mm', mean: 61.4 }
+    if (gender === 'female') return isRest
+      ? { min: 48, max: 69, typMin: 55, typMax: 62, typical: '55–62 mm', mean: 58.7 }
+      : { min: 46, max: 67, typMin: 53, typMax: 60, typical: '53–60 mm', mean: 56.7 }
+    return isRest
+      ? { min: 48, max: 74, typMin: 55, typMax: 67, typical: '55–67 mm', mean: 61.0 }
+      : { min: 46, max: 72, typMin: 53, typMax: 65, typical: '53–65 mm', mean: 59.0 }
   }
   const range = getRange()
-  const outOfRange = range && value && (value < range.min || value > range.max)
+  const outOfRange = range && clinicalValue && (clinicalValue < range.min || clinicalValue > range.max)
 
   return (
     <div className="screen">
@@ -46,7 +111,7 @@ export default function AfterCapture({ navigate, capture, mode, patient, vdr }) 
             </svg>
           </div>
           <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>
-            {isRest ? 'REST Captured!' : 'OCCLUSION Captured!'}
+            {isRest ? 'REST Captured!' : 'OCCLUSION Captured!'} ({captureCount} of {MAX_CAPTURES})
           </div>
         </div>
 
@@ -83,6 +148,75 @@ export default function AfterCapture({ navigate, capture, mode, patient, vdr }) 
 
       <div className="scroll-body">
 
+        {/* ── PHASE 4.2: All captures summary ────────────────── */}
+        {allValues.length >= 2 && (
+          <div className="card" style={{ padding:14 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'var(--text2)', textTransform:'uppercase', letterSpacing:0.5, marginBottom:10 }}>
+              Capture Summary — {label}
+            </div>
+
+            {/* Individual values */}
+            <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+              {allValues.map((v, i) => (
+                <div key={i} style={{
+                  flex:1, textAlign:'center', padding:'8px 4px',
+                  background: i === allValues.length - 1 ? 'var(--teal-light)' : 'var(--bg)',
+                  borderRadius:8, border: i === allValues.length - 1 ? '1.5px solid var(--teal)' : '1px solid var(--border)',
+                }}>
+                  <div style={{ fontSize:8, color:'var(--text3)', fontWeight:600, marginBottom:2 }}>#{i+1}</div>
+                  <div style={{ fontSize:16, fontWeight:800, color:'var(--text)' }}>{v}</div>
+                  <div style={{ fontSize:8, color:'var(--text3)' }}>mm</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Median + spread */}
+            <div style={{ display:'flex', gap:10 }}>
+              <div style={{ flex:1, background:'var(--bg)', borderRadius:8, padding:'8px 10px', textAlign:'center' }}>
+                <div style={{ fontSize:8, color:'var(--text3)', fontWeight:600, textTransform:'uppercase' }}>Median</div>
+                <div style={{ fontSize:18, fontWeight:900, color:'var(--teal)' }}>{median} mm</div>
+              </div>
+              <div style={{ flex:1, background: spreadWarn ? '#FEF3C7' : 'var(--bg)', borderRadius:8, padding:'8px 10px', textAlign:'center',
+                border: spreadWarn ? '1.5px solid #F59E0B' : 'none' }}>
+                <div style={{ fontSize:8, color: spreadWarn ? '#92400E' : 'var(--text3)', fontWeight:600, textTransform:'uppercase' }}>Spread</div>
+                <div style={{ fontSize:18, fontWeight:900, color: spreadWarn ? '#F59E0B' : 'var(--text2)' }}>{spread} mm</div>
+              </div>
+            </div>
+
+            {/* Spread warning */}
+            {spreadWarn && (
+              <div style={{ marginTop:10, background:'#FEF3C7', borderRadius:8, padding:'8px 12px', fontSize:11, color:'#92400E', lineHeight:1.5 }}>
+                ⚠️ Spread exceeds {SPREAD_WARN_MM} mm — readings are inconsistent. Consider capturing again or recalibrating.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── PHASE 5.1: Session baseline comparison ─────────── */}
+        {baseline && (
+          <div style={{
+            background: baseline.warn ? '#FEF3C7' : '#EFF6FF',
+            border: `1.5px solid ${baseline.warn ? '#F59E0B' : '#BFDBFE'}`,
+            borderRadius:'var(--radius)', padding:'12px 16px'
+          }}>
+            <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
+              <div style={{ fontSize:20, flexShrink:0 }}>{baseline.warn ? '⚠️' : 'ℹ️'}</div>
+              <div>
+                <div style={{ fontSize:12, fontWeight:700, color: baseline.warn ? '#92400E' : '#1E40AF', marginBottom:3 }}>
+                  {baseline.warn
+                    ? `Differs from history by ${baseline.deviation} mm`
+                    : 'Consistent with previous readings'}
+                </div>
+                <div style={{ fontSize:11, color: baseline.warn ? '#78350F' : '#3B82F6', lineHeight:1.5 }}>
+                  Previous {label} average: {baseline.mean} mm (from {baseline.count} record{baseline.count > 1 ? 's' : ''}).
+                  Current: {clinicalValue} mm.
+                  {baseline.warn && ' Please verify patient position and recalibrate if needed.'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── CRITICAL ERROR: VDO > VDR ──────────────────────── */}
         {vdoNegative && (
           <div style={{ background:'#FEF2F2', border:'2px solid #EF4444', borderRadius:'var(--radius)', padding:'16px' }}>
@@ -93,7 +227,7 @@ export default function AfterCapture({ navigate, capture, mode, patient, vdr }) 
                   VDO CANNOT BE LARGER THAN VDR
                 </div>
                 <div style={{ fontSize:12, color:'#7F1D1D', lineHeight:1.6 }}>
-                  <strong>VDO ({value} mm) &gt; VDR ({vdr} mm)</strong> is clinically impossible.
+                  <strong>VDO ({clinicalValue} mm) &gt; VDR ({vdr} mm)</strong> is clinically impossible.
                   When teeth are in contact, the jaw is HIGHER than at rest — so VDO must always be smaller than VDR.
                 </div>
                 <div style={{ marginTop:8, fontSize:11, color:'#991B1B' }}>
@@ -116,8 +250,7 @@ export default function AfterCapture({ navigate, capture, mode, patient, vdr }) 
                 </div>
                 <div style={{ fontSize:12, color:'#78350F', lineHeight:1.5 }}>
                   Clinically, freeway space should be 2–4 mm (minimum 1 mm).
-                  This reading suggests the occlusion scan was captured with the face too close to the camera,
-                  or the teeth were not fully closed. Recommend re-taking occlusion scan.
+                  This reading suggests the occlusion scan may need to be re-taken.
                 </div>
               </div>
             </div>
@@ -136,7 +269,7 @@ export default function AfterCapture({ navigate, capture, mode, patient, vdr }) 
         )}
 
         {/* Next step instruction for REST */}
-        {isRest && (
+        {isRest && !canCaptureMore && (
           <div style={{ background:'var(--teal-light)', borderRadius:'var(--radius)', padding:'16px', display:'flex', gap:12 }}>
             <div style={{ width:36, height:36, borderRadius:10, background:'var(--teal)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
@@ -153,21 +286,18 @@ export default function AfterCapture({ navigate, capture, mode, patient, vdr }) 
         )}
 
         {/* Indian population clinical range info */}
-        {range && value && (
+        {range && clinicalValue && (
           <div style={{ background:'var(--surface)', borderRadius:'var(--radius)', border:'1px solid var(--border)', padding:'14px 16px' }}>
             <div style={{ fontSize:11, fontWeight:700, color:'var(--text2)', textTransform:'uppercase', letterSpacing:0.5, marginBottom:10 }}>
               Indian Population Reference — {label}
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-              {/* Simple range bar */}
               <div style={{ flex:1, position:'relative', height:8, background:'var(--border)', borderRadius:4 }}>
-                {/* Normal range highlight */}
-                <div style={{ position:'absolute', left:`${((range.typical.split('–')[0] - range.min) / (range.max - range.min)) * 100}%`, right:`${100 - ((parseInt(range.typical.split('–')[1]) - range.min) / (range.max - range.min)) * 100}%`, height:'100%', background:'#CCFBF1', borderRadius:4 }}/>
-                {/* Current value marker */}
-                <div style={{ position:'absolute', left:`${Math.min(100, Math.max(0, ((value - range.min) / (range.max - range.min)) * 100))}%`, top:-3, width:3, height:14, background: outOfRange ? '#EF4444' : 'var(--teal)', borderRadius:2, transform:'translateX(-50%)' }}/>
+                <div style={{ position:'absolute', left:`${((range.typMin - range.min) / (range.max - range.min)) * 100}%`, right:`${100 - ((range.typMax - range.min) / (range.max - range.min)) * 100}%`, height:'100%', background:'#CCFBF1', borderRadius:4 }}/>
+                <div style={{ position:'absolute', left:`${Math.min(100, Math.max(0, ((clinicalValue - range.min) / (range.max - range.min)) * 100))}%`, top:-3, width:3, height:14, background: outOfRange ? '#EF4444' : 'var(--teal)', borderRadius:2, transform:'translateX(-50%)' }}/>
               </div>
               <div style={{ fontSize:12, fontWeight:700, color: outOfRange ? 'var(--danger)' : 'var(--teal)', minWidth:40 }}>
-                {value} mm
+                {clinicalValue} mm
               </div>
             </div>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--text3)' }}>
@@ -187,7 +317,7 @@ export default function AfterCapture({ navigate, capture, mode, patient, vdr }) 
         {capture?.imageData && (
           <div className="card" style={{ overflow:'hidden' }}>
             <div style={{ padding:'12px 14px', borderBottom:'1px solid var(--border)', fontSize:11, fontWeight:700, color:'var(--text2)', textTransform:'uppercase', letterSpacing:0.5 }}>
-              Captured Frame — {label}: {value} mm
+              Captured Frame #{captureCount} — {label}: {value} mm
             </div>
             <div style={{ position:'relative' }}>
               <img src={capture.imageData} alt="captured" style={{ width:'100%', display:'block', maxHeight:240, objectFit:'cover' }}/>
@@ -197,10 +327,6 @@ export default function AfterCapture({ navigate, capture, mode, patient, vdr }) 
             </div>
           </div>
         )}
-
-        <div style={{ textAlign:'center', fontSize:12, fontWeight:700, color:'var(--text2)', textTransform:'uppercase', letterSpacing:0.5 }}>
-          Confirm {isRest ? 'REST' : 'OCCLUSION'} Capture
-        </div>
       </div>
 
       {/* Bottom actions */}
@@ -212,23 +338,44 @@ export default function AfterCapture({ navigate, capture, mode, patient, vdr }) 
             <div style={{ background:'#FEF2F2', borderRadius:10, padding:'10px 14px', textAlign:'center', fontSize:12, color:'#DC2626', fontWeight:600 }}>
               Must re-take occlusion — freeway space must be ≥ 1 mm
             </div>
-            <button className="btn btn-primary" onClick={() => navigate('camera-occ')}
+            <button className="btn btn-primary" onClick={() => navigate('camera-occ', { resetCaptures: true })}
               style={{ borderRadius:14, background:'#E91E8C', boxShadow:'0 4px 14px rgba(233,30,140,0.35)' }}>
-              RE-TAKE OCCLUSION
+              RE-TAKE ALL OCCLUSION CAPTURES
             </button>
           </>
         ) : (
-          <button className="btn btn-primary"
-            onClick={() => isRest ? navigate('camera-occ') : navigate('results')}
-            style={{ borderRadius:14, background: isRest ? 'var(--teal)' : '#E91E8C', boxShadow: isRest ? '0 4px 14px rgba(13,148,136,0.35)' : '0 4px 14px rgba(233,30,140,0.35)' }}>
-            {isRest ? 'TAKE OCCLUSION →' : 'VIEW RESULTS →'}
-          </button>
+          <>
+            {/* PHASE 4.2: Capture again or proceed */}
+            {canCaptureMore && (
+              <button className="btn btn-outline"
+                onClick={() => isRest ? navigate('camera-rest') : navigate('camera-occ')}
+                style={{ borderRadius:14, borderColor: isRest ? 'var(--teal)' : '#E91E8C', color: isRest ? 'var(--teal)' : '#E91E8C' }}>
+                CAPTURE AGAIN ({captureCount}/{MAX_CAPTURES})
+                {spreadWarn ? ' — RECOMMENDED' : ''}
+              </button>
+            )}
+
+            {/* Proceed button */}
+            {hasEnoughCaptures && (
+              <button className="btn btn-primary"
+                onClick={() => isRest ? navigate('camera-occ') : navigate('results')}
+                style={{ borderRadius:14, background: isRest ? 'var(--teal)' : '#E91E8C',
+                  boxShadow: isRest ? '0 4px 14px rgba(13,148,136,0.35)' : '0 4px 14px rgba(233,30,140,0.35)' }}>
+                {isRest
+                  ? (captureCount < MAX_CAPTURES ? `PROCEED WITH ${captureCount} CAPTURE${captureCount > 1 ? 'S' : ''} →` : 'TAKE OCCLUSION →')
+                  : (captureCount < MAX_CAPTURES ? `PROCEED WITH ${captureCount} CAPTURE${captureCount > 1 ? 'S' : ''} →` : 'VIEW RESULTS →')}
+              </button>
+            )}
+          </>
         )}
 
-        <button className="btn btn-outline"
-          onClick={() => isRest ? navigate('camera-rest') : navigate('camera-occ')}
-          style={{ borderRadius:14, borderColor: isRest ? 'var(--teal)' : '#E91E8C', color: isRest ? 'var(--teal)' : '#E91E8C' }}>
-          RE-TAKE {isRest ? 'REST' : 'OCCLUSION'}
+        {/* Re-take all button */}
+        <button className="btn btn-ghost"
+          onClick={() => isRest
+            ? navigate('camera-rest', { resetCaptures: true })
+            : navigate('camera-occ', { resetCaptures: true })}
+          style={{ borderRadius:14, fontSize:12 }}>
+          START {isRest ? 'REST' : 'OCCLUSION'} OVER (clear all captures)
         </button>
       </div>
     </div>

@@ -39,7 +39,8 @@ export default function Results({ navigate, measurements, patient, onSave }) {
     </div>
   )
 
-  const { vdr, vdo, freewaySpace, restImage, occImage } = measurements
+  // FIX 1: restValues and occValues destructured (Doc 4 Fix 1)
+  const { vdr, vdo, freewaySpace, restImage, occImage, restValues, occValues } = measurements
   const ok = freewaySpace>=2&&freewaySpace<=4
 
   return (
@@ -98,7 +99,72 @@ export default function Results({ navigate, measurements, patient, onSave }) {
           </div>
         </div>
 
+        {/* PHASE 4.2: Individual capture values if multiple (Doc 4 Fix 3) */}
+        {restValues && restValues.length > 1 && (
+          <div className="card" style={{ padding:14 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'var(--text2)', textTransform:'uppercase', letterSpacing:0.5, marginBottom:8 }}>
+              Individual Captures
+            </div>
+            <div style={{ display:'flex', gap:12 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:9, color:'var(--text3)', marginBottom:4 }}>REST captures</div>
+                {restValues.map((v, i) => (
+                  <div key={i} style={{ fontSize:12, color:'var(--text2)', marginBottom:2 }}>
+                    #{i+1}: {v} mm
+                  </div>
+                ))}
+                <div style={{ fontSize:12, fontWeight:700, color:'var(--teal)', marginTop:4 }}>Median: {vdr} mm</div>
+              </div>
+              {occValues && occValues.length > 1 && (
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:9, color:'var(--text3)', marginBottom:4 }}>OCC captures</div>
+                  {occValues.map((v, i) => (
+                    <div key={i} style={{ fontSize:12, color:'var(--text2)', marginBottom:2 }}>
+                      #{i+1}: {v} mm
+                    </div>
+                  ))}
+                  <div style={{ fontSize:12, fontWeight:700, color:'#E91E8C', marginTop:4 }}>Median: {vdo} mm</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* PHASE 5.1: Session baseline comparison (Doc 4 Fix 2) */}
+        {/* v != null guard used (improvement over v1 which only had v > 0) */}
+        {(() => {
+          try {
+            const records = JSON.parse(localStorage.getItem('patients') || '[]')
+            const patientName = patient?.name?.trim().toLowerCase()
+            if (!patientName) return null
+            const history = records.filter(r =>
+              r.patient?.name?.trim().toLowerCase() === patientName
+            )
+            if (history.length === 0) return null
+            const histVdr = history.map(r => r.measurements?.vdr).filter(v => v != null && v > 0).slice(0, 5)
+            if (histVdr.length === 0) return null
+            const histMean = parseFloat((histVdr.reduce((a, b) => a + b, 0) / histVdr.length).toFixed(1))
+            const deviation = parseFloat(Math.abs(vdr - histMean).toFixed(1))
+            if (deviation <= 3) return null
+            return (
+              <div style={{ background:'#FEF3C7', border:'1.5px solid #F59E0B', borderRadius:'var(--radius)', padding:'12px 16px', display:'flex', alignItems:'flex-start', gap:10 }}>
+                <div style={{ fontSize:20, flexShrink:0 }}>⚠️</div>
+                <div>
+                  <div style={{ fontSize:12, fontWeight:700, color:'#92400E', marginBottom:3 }}>
+                    VDR differs from history by {deviation} mm
+                  </div>
+                  <div style={{ fontSize:11, color:'#78350F', lineHeight:1.5 }}>
+                    Previous VDR average: {histMean} mm (from {histVdr.length} record{histVdr.length > 1 ? 's' : ''}).
+                    Current: {vdr} mm. Verify measurement or note clinical reason for difference.
+                  </div>
+                </div>
+              </div>
+            )
+          } catch { return null }
+        })()}
+
         {/* Grade */}
+        {/* FIX: Spurious empty duplicate div removed from inside this card */}
         <div style={{ background:ok?'var(--teal-light)':'#FEF3C7', borderRadius:'var(--radius)', padding:'14px 16px', display:'flex', alignItems:'center', gap:12 }}>
           <div style={{ width:40, height:40, borderRadius:10, background:ok?'var(--teal)':'var(--warning)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>
             {ok?'✅':'⚠️'}
