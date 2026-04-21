@@ -1,39 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-  --teal:       #0D9488;
-  --teal-dark:  #0F766E;
-  --teal-light: #CCFBF1;
-  --teal-mid:   #14B8A6;
-  --white:      #FFFFFF;
-  --bg:         #F0FAFA;
-  --surface:    #FFFFFF;
-  --text:       #0F172A;
-  --text2:      #475569;
-  --text3:      #94A3B8;
-  --border:     #E2E8F0;
-  --success:    #10B981;
-  --warning:    #F59E0B;
-  --danger:     #EF4444;
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.06);
-  --shadow:     0 4px 16px rgba(13,148,136,0.10);
-  --radius-sm:  8px;
-  --radius:     12px;
-  --radius-lg:  18px;
-  --radius-full:100px;
-  --font:       'DM Sans', -apple-system, sans-serif;
+  /* ── Brand ─────────────────────────────────────────────── */
+  --primary:      #0B3C8C;
+  --primary-dark: #082D6B;
+  --secondary:    #2F80ED;
+  --accent:       #56CCF2;
+  --accent-light: #EBF5FF;
+  --accent-mid:   #93C5FD;
+
+  /* ── Surfaces ───────────────────────────────────────────── */
+  --white:        #FFFFFF;
+  --bg:           #F8FAFC;
+  --surface:      #FFFFFF;
+
+  /* ── Text ───────────────────────────────────────────────── */
+  --text:         #1F2937;
+  --text2:        #6B7280;
+  --text3:        #9CA3AF;
+
+  /* ── Borders ────────────────────────────────────────────── */
+  --border:       #E2E8F0;
+  --border-focus: #2F80ED;
+
+  /* ── Semantic ───────────────────────────────────────────── */
+  --success:      #10B981;
+  --success-soft: #D1FAE5;
+  --success-ink:  #065F46;
+  --warning:      #F59E0B;
+  --warning-soft: #FEF3C7;
+  --warning-ink:  #92400E;
+  --danger:       #EF4444;
+  --danger-soft:  #FEE2E2;
+  --danger-ink:   #991B1B;
+
+  /* ── Shadows ────────────────────────────────────────────── */
+  --shadow-sm:    0 1px 3px rgba(11,60,140,0.06);
+  --shadow:       0 4px 16px rgba(11,60,140,0.10);
+  --shadow-lg:    0 8px 28px rgba(11,60,140,0.18);
+
+  /* ── Radii ──────────────────────────────────────────────── */
+  --radius-sm:    8px;
+  --radius:       12px;
+  --radius-lg:    18px;
+  --radius-full:  100px;
+
+  /* ── Typography ─────────────────────────────────────────── */
+  --font:         'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
+
+/* ── Reset ───────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
 }
-html, body { width: 100%; height: 100%; }
+html, body {
+  width: 100%;
+  height: 100%;
+}
 body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Root container ──────────────────────────────────────── */
 #root {
   width: 100%;
   max-width: 430px;
@@ -42,6 +77,8 @@ body {
   background: var(--bg);
   overflow-x: hidden;
 }
+
+/* ── Screen wrapper ──────────────────────────────────────── */
 .screen {
   width: 100%;
   min-height: 100dvh;
@@ -51,80 +88,101 @@ body {
   animation: screenIn 0.22s ease-out;
 }
 @keyframes screenIn {
-  from { opacity: 0; transform: translateX(16px); }
-  to   { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateX(14px); }
+  to   { opacity: 1; transform: translateX(0);    }
 }
+
+/* ── Card ────────────────────────────────────────────────── */
 .card {
   background: var(--surface);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
+
+/* ── Buttons ─────────────────────────────────────────────── */
 .btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 15px 20px;
+  padding: 16px 20px;
   border: none;
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   font-family: var(--font);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  transition: transform 0.15s, opacity 0.15s;
-  letter-spacing: 0.4px;
+  transition: transform 0.13s ease, opacity 0.13s ease;
+  letter-spacing: 0.3px;
 }
-.btn:active { transform: scale(0.97); }
+.btn:active {
+  transform: scale(0.97);
+  opacity: 0.92;
+}
 .btn-primary {
-  background: var(--teal);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
   color: white;
-  box-shadow: 0 4px 14px rgba(13,148,136,0.35);
+  box-shadow: 0 6px 20px rgba(11,60,140,0.38);
 }
 .btn-outline {
   background: transparent;
-  color: var(--teal);
-  border: 2px solid var(--teal);
+  color: var(--secondary);
+  border: 2px solid var(--secondary);
 }
 .btn-ghost {
-  background: var(--teal-light);
-  color: var(--teal-dark);
+  background: var(--accent-light);
+  color: var(--primary);
 }
-.field { display: flex; flex-direction: column; gap: 5px; }
+
+/* ── Form fields ─────────────────────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .field-label {
+  font-family: var(--font);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text2);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.7px;
 }
 .field-input {
   width: 100%;
   padding: 13px 14px;
   border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   font-family: var(--font);
   font-size: 15px;
+  font-weight: 400;
   color: var(--text);
-  background: var(--surface);
+  background: var(--bg);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
   appearance: none;
   -webkit-appearance: none;
 }
 .field-input:focus {
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px rgba(13,148,136,0.12);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(47,128,237,0.14);
 }
-.field-input::placeholder { color: var(--text3); }
+.field-input::placeholder {
+  color: var(--text3);
+  font-weight: 400;
+}
 select.field-input {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394A3B8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239CA3AF' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 14px center;
   padding-right: 36px;
+  cursor: pointer;
 }
+
+/* ── Scroll body ─────────────────────────────────────────── */
 .scroll-body {
   flex: 1;
   overflow-y: auto;
@@ -134,34 +192,46 @@ select.field-input {
   gap: 12px;
   -webkit-overflow-scrolling: touch;
 }
+
+/* ── Badges ──────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: var(--radius-full);
+  font-family: var(--font);
   font-size: 10px;
   font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
 }
-.badge-success { background: #D1FAE5; color: #065F46; }
-.badge-warning  { background: #FEF3C7; color: #92400E; }
-.badge-teal     { background: var(--teal-light); color: var(--teal-dark); }
+.badge-success { background: var(--success-soft); color: var(--success-ink); }
+.badge-warning  { background: var(--warning-soft); color: var(--warning-ink); }
+.badge-danger   { background: var(--danger-soft);  color: var(--danger-ink);  }
+.badge-primary  { background: rgba(47,128,237,0.12); color: var(--primary);   }
+
+/* ── Spinner ─────────────────────────────────────────────── */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 .spinner {
-  width: 20px; height: 20px;
+  width: 20px;
+  height: 20px;
   border: 3px solid rgba(255,255,255,0.3);
   border-top-color: white;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
 }
+
+/* ── Utility animations ──────────────────────────────────── */
 @keyframes pulse {
-  0%,100% { opacity: 1; }
-  50%      { opacity: 0.4; }
+  0%, 100% { opacity: 1;   }
+  50%       { opacity: 0.4; }
 }
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0);    }
 }
-.fade-up { animation: fadeUp 0.3s ease-out; }
+.fade-up { animation: fadeUp 0.28s ease-out; }
+.pulse   { animation: pulse 1.4s ease-in-out infinite; }
