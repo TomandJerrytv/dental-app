@@ -8,6 +8,7 @@ import AfterCapture  from './screens/AfterCapture'
 import Results       from './screens/Results'
 import PdfReport     from './screens/PdfReport'
 import ViewReport    from './screens/ViewReport'
+import Splash from './screens/Splash.jsx'
 
 
 // PHASE 4.2: Compute median of array
@@ -20,7 +21,7 @@ function getMedian(arr) {
 
 
 export default function App() {
-  const [screen,           setScreen]           = useState('home')
+  const [screen,           setScreen]           = useState('splash')
   const [patient,          setPatient]           = useState(null)
 
   // PHASE 1: video resolution used during calibration — used by Camera.jsx 
@@ -152,6 +153,7 @@ export default function App() {
 
   return (
     <>
+       {screen === 'splash'      && <Splash        navigate={navigate} />} 
       {screen === 'home'        && <Home          navigate={navigate} />}
       {screen === 'patient'     && <PatientDetail navigate={navigate} />}
       {screen === 'calibration' && <Calibration   navigate={navigate} patient={patient} />}
