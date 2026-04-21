@@ -1,7 +1,9 @@
+/* font-display=swap — prevents invisible text on slow connections */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+/* ── Design tokens ───────────────────────────────────────────── */
 :root {
-  /* ── Brand ─────────────────────────────────────────────── */
+  /* New brand — Blue */
   --primary:      #0B3C8C;
   --primary-dark: #082D6B;
   --secondary:    #2F80ED;
@@ -9,21 +11,29 @@
   --accent-light: #EBF5FF;
   --accent-mid:   #93C5FD;
 
-  /* ── Surfaces ───────────────────────────────────────────── */
+  /* ⚠️ BACKWARD COMPAT — DO NOT REMOVE
+     Used by: Camera.jsx · Calibration.jsx
+              AfterCapture.jsx · Results.jsx · PatientDetail.jsx */
+  --teal:         #0D9488;
+  --teal-dark:    #0F766E;
+  --teal-light:   #CCFBF1;
+  --teal-mid:     #14B8A6;
+
+  /* Surfaces */
   --white:        #FFFFFF;
   --bg:           #F8FAFC;
   --surface:      #FFFFFF;
 
-  /* ── Text ───────────────────────────────────────────────── */
+  /* Text */
   --text:         #1F2937;
   --text2:        #6B7280;
   --text3:        #9CA3AF;
 
-  /* ── Borders ────────────────────────────────────────────── */
+  /* Borders */
   --border:       #E2E8F0;
   --border-focus: #2F80ED;
 
-  /* ── Semantic ───────────────────────────────────────────── */
+  /* Semantic */
   --success:      #10B981;
   --success-soft: #D1FAE5;
   --success-ink:  #065F46;
@@ -34,32 +44,29 @@
   --danger-soft:  #FEE2E2;
   --danger-ink:   #991B1B;
 
-  /* ── Shadows ────────────────────────────────────────────── */
+  /* Shadows */
   --shadow-sm:    0 1px 3px rgba(11,60,140,0.06);
   --shadow:       0 4px 16px rgba(11,60,140,0.10);
   --shadow-lg:    0 8px 28px rgba(11,60,140,0.18);
 
-  /* ── Radii ──────────────────────────────────────────────── */
+  /* Radii */
   --radius-sm:    8px;
   --radius:       12px;
   --radius-lg:    18px;
   --radius-full:  100px;
 
-  /* ── Typography ─────────────────────────────────────────── */
-  --font:         'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Typography */
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* ── Reset ───────────────────────────────────────────────── */
+/* ── Reset ───────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
 }
-html, body {
-  width: 100%;
-  height: 100%;
-}
+html, body { width: 100%; height: 100%; }
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -68,7 +75,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Root container ──────────────────────────────────────── */
+/* ── Root container ──────────────────────────────────────────── */
 #root {
   width: 100%;
   max-width: 430px;
@@ -76,9 +83,10 @@ body {
   margin: 0 auto;
   background: var(--bg);
   overflow-x: hidden;
+  /* ⚠️ NEVER add overflow-y:hidden — breaks camera video context */
 }
 
-/* ── Screen wrapper ──────────────────────────────────────── */
+/* ── Screen wrapper ──────────────────────────────────────────── */
 .screen {
   width: 100%;
   min-height: 100dvh;
@@ -92,7 +100,7 @@ body {
   to   { opacity: 1; transform: translateX(0);    }
 }
 
-/* ── Card ────────────────────────────────────────────────── */
+/* ── Card ────────────────────────────────────────────────────── */
 .card {
   background: var(--surface);
   border-radius: var(--radius-lg);
@@ -101,7 +109,7 @@ body {
   overflow: hidden;
 }
 
-/* ── Buttons ─────────────────────────────────────────────── */
+/* ── Buttons ─────────────────────────────────────────────────── */
 .btn {
   display: flex;
   align-items: center;
@@ -117,11 +125,11 @@ body {
   cursor: pointer;
   transition: transform 0.13s ease, opacity 0.13s ease;
   letter-spacing: 0.3px;
+  /* Prevent text selection on fast double-taps */
+  user-select: none;
+  -webkit-user-select: none;
 }
-.btn:active {
-  transform: scale(0.97);
-  opacity: 0.92;
-}
+.btn:active { transform: scale(0.97); opacity: 0.92; }
 .btn-primary {
   background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
   color: white;
@@ -132,19 +140,11 @@ body {
   color: var(--secondary);
   border: 2px solid var(--secondary);
 }
-.btn-ghost {
-  background: var(--accent-light);
-  color: var(--primary);
-}
+.btn-ghost { background: var(--accent-light); color: var(--primary); }
 
-/* ── Form fields ─────────────────────────────────────────── */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+/* ── Form fields ─────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 6px; }
 .field-label {
-  font-family: var(--font);
   font-size: 11px;
   font-weight: 600;
   color: var(--text2);
@@ -166,23 +166,21 @@ body {
   appearance: none;
   -webkit-appearance: none;
 }
+/* !important needed: PatientDetail sets inline border for error state.
+   On focus we always want the blue ring regardless of error state.    */
 .field-input:focus {
-  border-color: var(--border-focus);
+  border-color: var(--border-focus) !important;
   box-shadow: 0 0 0 3px rgba(47,128,237,0.14);
 }
-.field-input::placeholder {
-  color: var(--text3);
-  font-weight: 400;
-}
+.field-input::placeholder { color: var(--text3); font-weight: 400; }
 select.field-input {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239CA3AF' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 14px center;
+  /* Remove default arrow — PatientDetail renders custom SVG chevron */
+  background-image: none;
   padding-right: 36px;
   cursor: pointer;
 }
 
-/* ── Scroll body ─────────────────────────────────────────── */
+/* ── Scroll body ─────────────────────────────────────────────── */
 .scroll-body {
   flex: 1;
   overflow-y: auto;
@@ -193,13 +191,12 @@ select.field-input {
   -webkit-overflow-scrolling: touch;
 }
 
-/* ── Badges ──────────────────────────────────────────────── */
+/* ── Badges ──────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
   align-items: center;
   padding: 4px 12px;
   border-radius: var(--radius-full);
-  font-family: var(--font);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.4px;
@@ -209,14 +206,13 @@ select.field-input {
 .badge-warning  { background: var(--warning-soft); color: var(--warning-ink); }
 .badge-danger   { background: var(--danger-soft);  color: var(--danger-ink);  }
 .badge-primary  { background: rgba(47,128,237,0.12); color: var(--primary);   }
+/* Backward compat — used by Results.jsx, AfterCapture.jsx */
+.badge-teal     { background: var(--teal-light);   color: var(--teal-dark);  }
 
-/* ── Spinner ─────────────────────────────────────────────── */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* ── Spinner ─────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
-  width: 20px;
-  height: 20px;
+  width: 20px; height: 20px;
   border: 3px solid rgba(255,255,255,0.3);
   border-top-color: white;
   border-radius: 50%;
@@ -224,14 +220,27 @@ select.field-input {
   flex-shrink: 0;
 }
 
-/* ── Utility animations ──────────────────────────────────── */
-@keyframes pulse {
-  0%, 100% { opacity: 1;   }
-  50%       { opacity: 0.4; }
+/* ── Home: patient card tap — pure CSS, zero JS re-renders ───── */
+.patient-card {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  cursor: pointer;
 }
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0);    }
+.patient-card:active {
+  transform: scale(0.985);
+  box-shadow: 0 1px 4px rgba(11,60,140,0.07) !important;
 }
+
+/* ── Home: FAB tap — pure CSS ────────────────────────────────── */
+.home-fab {
+  transition: transform 0.13s ease, box-shadow 0.13s ease;
+}
+.home-fab:active {
+  transform: scale(0.91) !important;
+  box-shadow: 0 3px 10px rgba(11,60,140,0.28) !important;
+}
+
+/* ── Utility ─────────────────────────────────────────────────── */
+@keyframes pulse  { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+@keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 .fade-up { animation: fadeUp 0.28s ease-out; }
 .pulse   { animation: pulse 1.4s ease-in-out infinite; }

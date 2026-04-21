@@ -516,20 +516,33 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
       tick(nPx.x, nPx.y, accent)
       tick(nPx.x, cPx.y, '#42A5F5')
 
-      // Landmark dots
+      // Landmark dots — visible reference points for dentist
       const dot = (p, c, r = 5) => {
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
-        ctx.fillStyle = c; ctx.shadowBlur = 10; ctx.shadowColor = c; ctx.fill(); ctx.shadowBlur = 0
+        ctx.fillStyle = c; ctx.shadowBlur = 12; ctx.shadowColor = c; ctx.fill(); ctx.shadowBlur = 0
+        // White center for visibility on any skin tone
+        ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.35, 0, Math.PI * 2)
+        ctx.fillStyle = '#fff'; ctx.fill()
       }
-      dot(nasPx,                    '#F59E0B', 4)
-      dot(nPx,                      accent,    6)
-      dot({ x: nPx.x, y: cPx.y }, '#42A5F5', 6)
+
+      // Eye landmarks (IPD reference points for live scaling)
+      const lEyePx = { x: lm[L_EYE].x * W, y: lm[L_EYE].y * H }
+      const rEyePx = { x: lm[R_EYE].x * W, y: lm[R_EYE].y * H }
+      dot(lEyePx,                   '#FBBF24', 7)   // Left eye — amber
+      dot(rEyePx,                   '#FBBF24', 7)   // Right eye — amber
+
+      // Measurement endpoints
+      dot(nasPx,                    '#F59E0B', 5)    // Nasion — reference only
+      dot(nPx,                      accent,    8)    // Subnasale — TOP measurement point
+      dot({ x: nPx.x, y: cPx.y }, '#42A5F5', 8)    // Gnathion — BOTTOM measurement point (chin)
 
       // Labels
       ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = '#fff'
       ctx.shadowBlur = 4; ctx.shadowColor = 'rgba(0,0,0,0.9)'
-      ctx.fillText('Subnasale', nPx.x + 12, nPx.y - 5)
-      ctx.fillText('Gnathion',  nPx.x + 12, cPx.y + 14)
+      ctx.fillText('L Eye',      lEyePx.x + 10, lEyePx.y - 4)
+      ctx.fillText('R Eye',      rEyePx.x + 10, rEyePx.y - 4)
+      ctx.fillText('Subnasale',  nPx.x + 14, nPx.y - 5)
+      ctx.fillText('Gnathion',   nPx.x + 14, cPx.y + 14)
       ctx.shadowBlur = 0
     }
 
