@@ -356,6 +356,24 @@ export default function Calibration({ navigate, patient }) {
               if (settings?.width && settings?.height) {
                 setImgNat({ w: settings.width, h: settings.height })
               }
+              // DIAGNOSTIC — remove after debugging
+              setError(`onUserMedia OK. Track: ${track?.label || 'none'}. Settings: ${JSON.stringify(settings || {})}. ReadyState will poll below.`)
+              let count = 0
+              const poll = setInterval(() => {
+                count++
+                const v = camRef.current?.video
+                if (!v) { setError('No video element after ' + count + ' polls'); return }
+                const info = `Poll ${count}: readyState=${v.readyState}, videoW=${v.videoWidth}, videoH=${v.videoHeight}, paused=${v.paused}, srcObject=${v.srcObject ? 'YES' : 'NO'}`
+                setError(info)
+                if (v.readyState >= 2 && v.videoWidth > 0) {
+                  setError('✅ CAMERA READY: ' + v.videoWidth + 'x' + v.videoHeight)
+                  clearInterval(poll)
+                }
+                if (count > 30) clearInterval(poll)  // stop after 15 seconds
+              }, 500)
+            }}
+            onUserMediaError={(err) => {
+              setError(`❌ getUserMedia FAILED: ${err?.name} — ${err?.message}`)
             }}
           />
 
