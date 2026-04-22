@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera Debugger — Exact At Ease</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #fff;
+      padding: 12px;
+      font-size: 13px;
+    }
+    h1 { font-size: 16px; margin-bottom: 10px; color: #10B981; }
+    .log {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-family: monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 40vh;
+      overflow-y: auto;
+    }
+    .log-ok { color: #10B981; }
+    .log-err { color: #EF4444; }
+    .log-info { color: #FBBF24; }
+    video {
+      width: 100%;
+      max-height: 300px;
+      background: #000;
+      border: 2px solid #10B981;
+      border-radius: 8px;
+      display: block;
+      margin-bottom: 10px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #10B981;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; }
+    .status {
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+    .status-idle { background: #333; }
+    .status-running { background: #3B82F6; }
+    .status-ok { background: #10B981; }
+    .status-err { background: #EF4444; }
+  </style>
+</head>
+<body>
+  <h1>📷 Camera Debugger — Exact At Ease</h1>
+  <div id="status" class="status status-idle">Ready. Tap a button below.</div>
+  
+  <video id="video" autoplay playsinline muted></video>
+  
+  <button id="btn-simple">TEST 1: Simple getUserMedia (any camera)</button>
+  <button id="btn-rear">TEST 2: Rear camera (environment)</button>
+  <button id="btn-rear-1080">TEST 3: Rear camera @ 1080p</button>
+  <button id="btn-rear-4k">TEST 4: Rear camera @ 4K (current app config)</button>
+  <button id="btn-front">TEST 5: Front camera (user)</button>
+  <button id="btn-devices">TEST 6: Enumerate available devices</button>
+  <button id="btn-permissions">TEST 7: Check permissions</button>
+  <button id="btn-clear" style="background:#EF4444">STOP & CLEAR</button>
+  
+  <div class="log" id="log">Log output will appear here...\n</div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const video = document.getElementById('video');
+    const statusEl = document.getElementById('status');
+    let currentStream = null;
+    let pollInterval = null;
+
+    function log(msg, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const cls = type === 'ok' ? 'log-ok' : type === 'err' ? 'log-err' : 'log-info';
+      logEl.innerHTML += `<span class="${cls}">[${time}] ${msg}</span>\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(msg, cls) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status ' + cls;
+    }
+
+    function stopCamera() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => { t.stop(); log('Stopped track: ' + t.label, 'info'); });
+        currentStream = null;
+      }
+      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+      video.srcObject = null;
+    }
+
+    function startPolling() {
+      if (pollInterval) clearInterval(pollInterval);
+      let count = 0;
+      pollInterval = setInterval(() => {
+        count++;
+        const rs = video.readyState;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const paused = video.paused;
+        const cw = video.clientWidth;
+        const ch = video.clientHeight;
+        log(`Poll ${count}: rs=${rs} videoW=${vw} videoH=${vh} paused=${paused} elemW=${cw} elemH=${ch}`, rs >= 2 && vw > 0 ? 'ok' : 'info');
+        if (rs >= 2 && vw > 0) {
+          log(`✅ CAMERA READY — frames arriving at ${vw}x${vh}`, 'ok');
+          setStatus(`✅ SUCCESS: ${vw}x${vh}`, 'status-ok');
+          clearInterval(pollInterval);
+        }
+        if (count >= 20) {
+          log(`⏱️ TIMEOUT after 10s. Camera never reached readyState=2.`, 'err');
+          setStatus('❌ TIMEOUT — video never played', 'status-err');
+          clearInterval(pollInterval);
+        }
+      }, 500);
+    }
+
+    async function tryGetMedia(constraints, label) {
+      stopCamera();
+      log(`\n=== ${label} ===`, 'info');
+      log(`Constraints: ${JSON.stringify(constraints)}`, 'info');
+      setStatus(`Running: ${label}...`, 'status-running');
+      
+      // Check HTTPS
+      log(`Page protocol: ${location.protocol}`, location.protocol === 'https:' ? 'ok' : 'err');
+      log(`User agent: ${navigator.userAgent.substring(0, 80)}...`, 'info');
+      log(`mediaDevices available: ${!!navigator.mediaDevices}`, navigator.mediaDevices ? 'ok' : 'err');
+      
+      if (!navigator.mediaDevices) {
+        log('❌ navigator.mediaDevices is UNDEFINED. Likely HTTP (not HTTPS) or very old browser.', 'err');
+        setStatus('❌ mediaDevices API unavailable', 'status-err');
+        return;
+      }
+
+      try {
+        log('Calling getUserMedia...', 'info');
+        const t0 = performance.now();
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const t1 = performance.now();
+        log(`✅ getUserMedia resolved in ${Math.round(t1-t0)}ms`, 'ok');
+        
+        currentStream = stream;
+        const tracks = stream.getVideoTracks();
+        log(`Video tracks: ${tracks.length}`, 'ok');
+        tracks.forEach((t, i) => {
+          log(`  Track ${i}: label="${t.label}" state=${t.readyState} muted=${t.muted}`, 'info');
+          const s = t.getSettings();
+          log(`  Settings: ${JSON.stringify(s)}`, 'info');
+        });
+        
+        log('Attaching stream to <video>...', 'info');
+        video.srcObject = stream;
+        
+        // Try to play explicitly
+        try {
+          await video.play();
+          log('✅ video.play() resolved', 'ok');
+        } catch (playErr) {
+          log(`⚠️ video.play() rejected: ${playErr.name} — ${playErr.message}`, 'err');
+          log('This usually means autoplay is blocked.', 'err');
+        }
+        
+        log('Starting readyState poll (every 500ms, max 10s)...', 'info');
+        startPolling();
+        
+      } catch (err) {
+        log(`❌ getUserMedia FAILED: ${err.name}`, 'err');
+        log(`   Message: ${err.message}`, 'err');
+        log(`   Constraint: ${err.constraint || 'none'}`, 'err');
+        setStatus(`❌ ${err.name}`, 'status-err');
+        
+        // Common error interpretations
+        if (err.name === 'NotAllowedError') log('→ User denied permission OR Chrome site setting is Block', 'err');
+        if (err.name === 'NotFoundError') log('→ No camera hardware found matching constraints', 'err');
+        if (err.name === 'NotReadableError') log('→ Camera in use by another app (close other camera apps)', 'err');
+        if (err.name === 'OverconstrainedError') log('→ Constraints too strict for this camera', 'err');
+        if (err.name === 'SecurityError') log('→ Likely HTTP instead of HTTPS', 'err');
+      }
+    }
+
+    document.getElementById('btn-simple').onclick = () => 
+      tryGetMedia({ video: true }, 'SIMPLE (video: true)');
+    
+    document.getElementById('btn-rear').onclick = () => 
+      tryGetMedia({ video: { facingMode: 'environment' } }, 'REAR CAMERA (no resolution)');
+    
+    document.getElementById('btn-rear-1080').onclick = () => 
+      tryGetMedia({ video: { facingMode: 'environment', width: {ideal: 1920}, height: {ideal: 1080} } }, 'REAR @ 1080p');
+    
+    document.getElementById('btn-rear-4k').onclick = () => 
+      tryGetMedia({ video: { facingMode: 'environment', width: {ideal: 3840}, height: {ideal: 2160} } }, 'REAR @ 4K (current app)');
+    
+    document.getElementById('btn-front').onclick = () => 
+      tryGetMedia({ video: { facingMode: 'user' } }, 'FRONT CAMERA');
+    
+    document.getElementById('btn-devices').onclick = async () => {
+      stopCamera();
+      log('\n=== ENUMERATE DEVICES ===', 'info');
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter(d => d.kind === 'videoinput');
+        log(`Found ${cams.length} video input device(s):`, cams.length > 0 ? 'ok' : 'err');
+        cams.forEach((d, i) => {
+          log(`  ${i}: deviceId=${d.deviceId.substring(0,20)}... label="${d.label || '(hidden — need permission first)'}"`, 'info');
+        });
+        setStatus(`Found ${cams.length} cameras`, cams.length > 0 ? 'status-ok' : 'status-err');
+      } catch (err) {
+        log(`❌ enumerateDevices failed: ${err.message}`, 'err');
+        setStatus('❌ enum failed', 'status-err');
+      }
+    };
+    
+    document.getElementById('btn-permissions').onclick = async () => {
+      log('\n=== CHECK PERMISSIONS ===', 'info');
+      try {
+        const p = await navigator.permissions.query({ name: 'camera' });
+        log(`Camera permission state: ${p.state}`, p.state === 'granted' ? 'ok' : 'err');
+        setStatus(`Permission: ${p.state}`, p.state === 'granted' ? 'status-ok' : 'status-err');
+      } catch (err) {
+        log(`Permissions API not supported or failed: ${err.message}`, 'err');
+      }
+    };
+    
+    document.getElementById('btn-clear').onclick = () => {
+      stopCamera();
+      logEl.innerHTML = 'Log cleared.\n';
+      setStatus('Stopped', 'status-idle');
+    };
+
+    // On load
+    log(`Page loaded at ${new Date().toLocaleTimeString()}`, 'info');
+    log(`URL: ${location.href}`, 'info');
+    log(`Protocol: ${location.protocol}`, location.protocol === 'https:' ? 'ok' : 'err');
+    log(`UA: ${navigator.userAgent}`, 'info');
+    log(`\nTap TEST 1 first to check if camera works at all.\n`, 'info');
+  </script>
+</body>
+</html>
