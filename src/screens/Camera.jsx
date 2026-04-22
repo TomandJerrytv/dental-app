@@ -629,7 +629,7 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
     <div style={{ width:'100%', height:'100dvh', background:'#0a0a0a', display:'flex', flexDirection:'column', position:'relative', overflow:'hidden' }}>
 
       {/* ── Top bar ── */}
-      <div style={{ position:'absolute', top:0, left:0, right:0, zIndex:20, background:'rgba(0,0,0,0.70)', backdropFilter:'blur(6px)', padding:'44px 16px 12px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div style={{ position:'absolute', top:0, left:0, right:0, zIndex:20, background:'rgba(0,0,0,0.70)', padding:'44px 16px 12px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <button onClick={() => navigate('home')} style={{ background:'rgba(255,255,255,0.15)', border:'none', borderRadius:'50%', width:36, height:36, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#fff' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
@@ -814,7 +814,7 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
       {/* ── Status bar ── */}
       {!loading && (
         <div style={{ position:'absolute', bottom:118, left:16, right:16, zIndex:15 }}>
-          <div style={{ background:s.bg, borderRadius:10, padding:'9px 14px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, backdropFilter:'blur(4px)' }}>
+          <div style={{ background:s.bg, borderRadius:10, padding:'9px 14px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, }}>
             <div style={{ width:7, height:7, borderRadius:'50%', background:'#fff', flexShrink:0 }}/>
             <span style={{ color:'#fff', fontSize:12, fontWeight:700, letterSpacing:0.4 }}>{s.txt}</span>
           </div>
@@ -822,7 +822,7 @@ export default function Camera({ navigate, mode, patient, pxPerMm, positionBasel
       )}
 
       {/* ── Capture button ── */}
-      <div style={{ position:'absolute', bottom:0, left:0, right:0, zIndex:15, background:'rgba(0,0,0,0.75)', backdropFilter:'blur(8px)', padding:'14px 20px 30px' }}>
+      <div style={{ position:'absolute', bottom:0, left:0, right:0, zIndex:15, background:'rgba(0,0,0,0.75)', padding:'14px 20px 30px' }}>
         <div style={{ display:'flex', gap:8, marginBottom:12 }}>
           <div style={{ flex:1, height:3, borderRadius:2, background: isRest ? accent : 'rgba(255,255,255,0.25)' }}/>
           <div style={{ flex:1, height:3, borderRadius:2, background: !isRest ? '#E91E8C' : 'rgba(255,255,255,0.25)' }}/>

@@ -385,7 +385,7 @@ export default function Calibration({ navigate, patient }) {
           </div>
 
           {/* Top instruction */}
-          <div style={{ position:'absolute', top:0, left:0, right:0, background:'rgba(0,0,0,0.80)', backdropFilter:'blur(4px)', padding:'10px 14px' }}>
+          <div style={{ position:'absolute', top:0, left:0, right:0, background:'rgba(0,0,0,0.80)', padding:'10px 14px' }}>
             <div style={{ color:'#fff', fontSize:12, fontWeight:800, marginBottom:3 }}>
               📏 Hold depressor VERTICALLY beside cheek (either side)
             </div>
@@ -394,7 +394,7 @@ export default function Calibration({ navigate, patient }) {
             </div>
           </div>
 
-          <div style={{ padding:'12px 16px 24px', background:'rgba(0,0,0,0.85)', backdropFilter:'blur(6px)' }}>
+          <div style={{ padding:'12px 16px 24px', background:'rgba(0,0,0,0.85)'}}>
             <div style={{ display:'flex', gap:10 }}>
               <button className="btn btn-ghost" onClick={() => setStep('intro')} style={{ flex:1, borderRadius:12, fontSize:12 }}>← BACK</button>
               <button onClick={() => setFacingMode(f => f === 'environment' ? 'user' : 'environment')}
