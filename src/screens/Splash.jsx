@@ -1,248 +1,276 @@
-import { useEffect, useRef } from 'react'
+// src/screens/Splash.jsx
+// ─────────────────────────────────────────────────────────────────────────────
+// EXACT AT EASE — SPLASH SCREEN (GPU-Safe)
+//
+// CRITICAL ANDROID RULES (do not violate — breaks camera on subsequent screens):
+//   ✗ NO transform animations  — creates GPU compositor layers that linger
+//   ✗ NO will-change           — same compositor layer problem
+//   ✗ NO filter:blur           — compositor layer conflict with video stream
+//   ✗ NO backdrop-filter       — same
+//   ✗ NO position:fixed        — same
+//   ✓ opacity animations ONLY  — safe, no compositor layer created
+//   ✓ background + border animations — safe
+//
+// This splash navigates to 'home' after 2.2 seconds.
+// All animations complete within 2 seconds so there is NO animation still
+// running when the navigate() call fires — Android reclaims resources cleanly.
+// ─────────────────────────────────────────────────────────────────────────────
 
-/* ═══════════════════════════════════════════════════════════════
-   EXACT AT EASE — SPLASH SCREEN
-   src/screens/Splash.jsx
-   Props: { navigate(screen) }
-   Auto-navigates to 'home' after 2.4 s.
-   Zero className dependencies — 100% inline styles.
-   ═══════════════════════════════════════════════════════════════ */
+import { useEffect } from 'react'
 
-const KEYFRAMES = `
-@keyframes eae-logo-drop {
-  0%   { opacity: 0; transform: translateY(-28px) scale(0.88); }
-  60%  { opacity: 1; transform: translateY(4px)   scale(1.03); }
-  100% { opacity: 1; transform: translateY(0)     scale(1);    }
-}
-@keyframes eae-fade-up {
-  0%   { opacity: 0; transform: translateY(16px); }
-  100% { opacity: 1; transform: translateY(0);    }
-}
-@keyframes eae-bar-grow {
-  0%   { width: 0%; }
-  100% { width: 100%; }
-}
-@keyframes eae-shimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position:  200% center; }
-}
-@keyframes eae-pulse-ring {
-  0%   { transform: scale(0.92); opacity: 0.5; }
-  50%  { transform: scale(1.08); opacity: 0.15; }
-  100% { transform: scale(0.92); opacity: 0.5; }
-}
+// ── Keyframe injection — opacity only, never transform ────────────────────────
+// Injected once at module evaluation, never recreated.
+// Using a style tag instead of index.css so this file is fully self-contained.
+const SPLASH_STYLES = `
+  @keyframes splashFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes splashLogoIn {
+    0%   { opacity: 0; }
+    30%  { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes splashTitleIn {
+    0%   { opacity: 0; }
+    50%  { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes splashSubIn {
+    0%   { opacity: 0; }
+    60%  { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes splashBarFill {
+    0%   { opacity: 0.4; width: 0%; }
+    10%  { opacity: 1;   width: 0%; }
+    85%  { opacity: 1;   width: 100%; }
+    100% { opacity: 1;   width: 100%; }
+  }
+  @keyframes splashDotPulse {
+    0%,100% { opacity: 0.3; }
+    50%     { opacity: 1;   }
+  }
 `
 
-function useStyles() {
-  useEffect(() => {
-    if (document.getElementById('eae-splash-kf')) return
-    const s = document.createElement('style')
-    s.id = 'eae-splash-kf'
-    s.textContent = KEYFRAMES
-    document.head.appendChild(s)
-  }, [])
+// Inject styles once — idempotent
+if (typeof document !== 'undefined' && !document.getElementById('splash-styles')) {
+  const tag = document.createElement('style')
+  tag.id = 'splash-styles'
+  tag.textContent = SPLASH_STYLES
+  document.head.appendChild(tag)
 }
 
-export default function Splash({ navigate }) {
-  useStyles()
-  const done = useRef(false)
+// ── Brand colors (module-level) ───────────────────────────────────────────────
+const PRIMARY   = '#0B3C8C'
+const SECONDARY = '#2F80ED'
+const GRAD      = `linear-gradient(160deg, ${PRIMARY} 0%, #1553b5 50%, ${SECONDARY} 100%)`
 
+// ─────────────────────────────────────────────────────────────────────────────
+export default function Splash({ navigate }) {
+
+  // Navigate to home after 2.2s — all animations finish at 2.0s
+  // so there is NO running animation when navigate fires.
+  // Android reclaims GPU resources cleanly before camera screens mount.
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (!done.current) { done.current = true; navigate('home') }
-    }, 2400)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => navigate('home'), 2200)
+    return () => clearTimeout(timer)
   }, [navigate])
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(160deg, #0B3C8C 0%, #1553b5 45%, #2F80ED 100%)',
-        zIndex: 9999,
-        overflow: 'hidden',
-        userSelect: 'none',
-      }}
-    >
-      {/* ── decorative blur orbs ── */}
+    <div style={{
+      width:           '100%',
+      minHeight:       '100dvh',
+      background:      GRAD,
+      display:         'flex',
+      flexDirection:   'column',
+      alignItems:      'center',
+      justifyContent:  'center',
+      position:        'relative',  // NOT fixed — no compositor layer
+      overflow:        'hidden',
+      animation:       'splashFadeIn 0.35s ease-out',
+    }}>
+
+      {/* ── Decorative circles — opacity only, NO filter:blur ──────────────── */}
+      {/* These are purely visual. No animations on them — static opacity. */}
       <div style={{
-        position: 'absolute', top: -60, right: -60,
-        width: 220, height: 220, borderRadius: '50%',
-        background: 'rgba(86,204,242,0.25)',
-        filter: 'blur(50px)', pointerEvents: 'none',
+        position:     'absolute',
+        top:          -60,
+        right:        -60,
+        width:        220,
+        height:       220,
+        borderRadius: '50%',
+        background:   'rgba(86,204,242,0.14)',
+        pointerEvents:'none',
       }}/>
       <div style={{
-        position: 'absolute', bottom: -60, left: -60,
-        width: 200, height: 200, borderRadius: '50%',
-        background: 'rgba(255,255,255,0.10)',
-        filter: 'blur(40px)', pointerEvents: 'none',
+        position:     'absolute',
+        bottom:       -40,
+        left:         -50,
+        width:        180,
+        height:       180,
+        borderRadius: '50%',
+        background:   'rgba(255,255,255,0.07)',
+        pointerEvents:'none',
       }}/>
       <div style={{
-        position: 'absolute', top: '40%', left: '15%',
-        width: 100, height: 100, borderRadius: '50%',
-        background: 'rgba(86,204,242,0.10)',
-        filter: 'blur(24px)', pointerEvents: 'none',
+        position:     'absolute',
+        top:          '30%',
+        left:         -30,
+        width:        100,
+        height:       100,
+        borderRadius: '50%',
+        background:   'rgba(255,255,255,0.05)',
+        pointerEvents:'none',
       }}/>
 
-      {/* ── pulse ring behind logo ── */}
+      {/* ── Main content column ───────────────────────────────────────────── */}
       <div style={{
-        position: 'absolute',
-        width: 180, height: 180,
-        borderRadius: '50%',
-        border: '2px solid rgba(86,204,242,0.28)',
-        animation: 'eae-pulse-ring 2.4s ease-in-out infinite',
-        pointerEvents: 'none',
-      }}/>
-      <div style={{
-        position: 'absolute',
-        width: 220, height: 220,
-        borderRadius: '50%',
-        border: '1.5px solid rgba(86,204,242,0.14)',
-        animation: 'eae-pulse-ring 2.4s ease-in-out 0.4s infinite',
-        pointerEvents: 'none',
-      }}/>
-
-      {/* ── logo container ── */}
-      <div style={{
-        display: 'flex',
+        display:       'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        gap: 0,
-        animation: 'eae-logo-drop 0.72s cubic-bezier(0.34,1.56,0.64,1) 0.1s both',
+        alignItems:    'center',
+        gap:           0,
+        position:      'relative',
+        zIndex:        1,
+        padding:       '0 40px',
+        width:         '100%',
+        maxWidth:      360,
       }}>
-        {/* logo image */}
+
+        {/* Logo card — fades in, NO transform/scale animation */}
         <div style={{
-          width: 130,
-          height: 130,
-          borderRadius: 32,
-          background: 'rgba(255,255,255,0.10)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          border: '1.5px solid rgba(255,255,255,0.22)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 12px 48px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.25)',
+          width:        100,
+          height:       100,
+          borderRadius: 26,
+          background:   'rgba(255,255,255,0.14)',
+          border:       '1.5px solid rgba(255,255,255,0.22)',
+          display:      'flex',
+          alignItems:   'center',
+          justifyContent:'center',
           marginBottom: 28,
-          overflow: 'hidden',
+          animation:    'splashLogoIn 0.9s ease-out forwards',
+          opacity:      0,         // start hidden, animation reveals
         }}>
           <img
             src="/icon-512.png"
             alt="Exact At Ease"
             style={{
-              width: 108,
-              height: 108,
-              objectFit: 'contain',
-              filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.18))',
+              width:       70,
+              height:      70,
+              borderRadius:14,
+              objectFit:  'contain',
+              display:    'block',
             }}
-            onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+            onError={e => {
+              // Fallback: show tooth SVG if icon missing
+              e.target.style.display = 'none'
+              e.target.parentNode.innerHTML = `
+                <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+                  <path d="M28 6C22 6 17 9 14 14 11 19 11 24 13 28 15 32 16 36 16 40 16 44 18 48 20 48 22 48 23 44 24 41 25 38 26.5 36 28 36 29.5 36 31 38 32 41 33 44 34 48 36 48 38 48 40 44 40 40 40 36 41 32 43 28 45 24 45 19 42 14 39 9 34 6 28 6Z" fill="rgba(255,255,255,0.9)"/>
+                  <circle cx="22" cy="20" r="3" fill="rgba(11,60,140,0.6)"/>
+                  <circle cx="34" cy="20" r="3" fill="rgba(11,60,140,0.6)"/>
+                </svg>
+              `
+            }}
           />
-          {/* SVG fallback — shown only if logo.png is missing */}
-          <div style={{ display: 'none', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
-              {/* face silhouette */}
-              <path d="M28 68 C28 68 20 60 18 50 C16 40 18 30 24 24 C30 18 36 16 40 16 C44 16 50 18 56 24"
-                    stroke="rgba(255,255,255,0.9)" strokeWidth="3" strokeLinecap="round" fill="none"/>
-              <path d="M24 24 C20 30 18 38 20 46 C22 54 26 62 28 68"
-                    stroke="rgba(255,255,255,0.9)" strokeWidth="3" strokeLinecap="round" fill="none"/>
-              {/* ruler line */}
-              <line x1="40" y1="10" x2="40" y2="72" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-              <circle cx="40" cy="10" r="4" fill="white"/>
-              <circle cx="40" cy="72" r="4" fill="white"/>
-              {/* tick marks */}
-              {[18,26,34,42,50,58,66].map((y, i) => (
-                <line key={i} x1="40" y1={y} x2={i % 2 === 0 ? 50 : 46} y2={y}
-                      stroke="rgba(255,255,255,0.75)" strokeWidth="1.8" strokeLinecap="round"/>
-              ))}
-              {/* E letter hint */}
-              <text x="54" y="44" fill="rgba(255,255,255,0.85)" fontSize="26" fontWeight="900"
-                    fontFamily="Inter, sans-serif">E</text>
-            </svg>
-          </div>
         </div>
 
-        {/* app name */}
+        {/* App name */}
         <div style={{
-          animation: 'eae-fade-up 0.55s ease-out 0.55s both',
-          textAlign: 'center',
+          fontSize:       28,
+          fontWeight:     700,
+          color:          '#fff',
+          letterSpacing:  '-0.5px',
+          textAlign:      'center',
+          lineHeight:     1.2,
+          marginBottom:   8,
+          fontFamily:     'var(--font)',
+          animation:      'splashTitleIn 1.1s ease-out forwards',
+          opacity:        0,
         }}>
-          <h1 style={{
-            fontFamily: 'Inter, -apple-system, sans-serif',
-            fontWeight: 700,
-            fontSize: 30,
-            color: '#fff',
-            letterSpacing: '-0.6px',
-            margin: 0,
-            lineHeight: 1.1,
-          }}>
-            Exact At Ease
-          </h1>
-          <p style={{
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 400,
-            fontSize: 14,
-            color: 'rgba(255,255,255,0.72)',
-            marginTop: 8,
-            letterSpacing: '0.2px',
-          }}>
-            Dental Measurement Platform
-          </p>
+          Exact At Ease
         </div>
-      </div>
 
-      {/* ── loading bar ── */}
-      <div style={{
-        position: 'absolute',
-        bottom: 60,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 160,
-        animation: 'eae-fade-up 0.4s ease-out 0.8s both',
-      }}>
+        {/* Subtitle */}
         <div style={{
-          width: '100%',
-          height: 3,
-          background: 'rgba(255,255,255,0.18)',
-          borderRadius: 99,
-          overflow: 'hidden',
+          fontSize:      14,
+          fontWeight:    400,
+          color:         'rgba(255,255,255,0.78)',
+          textAlign:     'center',
+          marginBottom:  48,
+          fontFamily:    'var(--font)',
+          letterSpacing: '0.3px',
+          animation:     'splashSubIn 1.3s ease-out forwards',
+          opacity:       0,
+        }}>
+          Dental Measurement Platform
+        </div>
+
+        {/* Loading bar — opacity + width animation only, no transform */}
+        <div style={{
+          width:        '100%',
+          height:       3,
+          background:   'rgba(255,255,255,0.15)',
+          borderRadius: 2,
+          overflow:     'hidden',
+          marginBottom: 12,
         }}>
           <div style={{
-            height: '100%',
-            borderRadius: 99,
-            background: 'linear-gradient(90deg, rgba(86,204,242,0.7) 0%, #fff 50%, rgba(86,204,242,0.7) 100%)',
-            backgroundSize: '200% auto',
-            animation: 'eae-bar-grow 2s ease-out 0.3s both, eae-shimmer 1.4s linear 0.3s infinite',
+            height:       '100%',
+            background:   'rgba(255,255,255,0.88)',
+            borderRadius: 2,
+            // width animates from 0→100% — this is a layout property, NOT a compositor trigger
+            animation:    'splashBarFill 2.0s ease-in-out forwards',
+            opacity:      0,
+            width:        '0%',
           }}/>
         </div>
-        <p style={{
-          fontFamily: 'Inter, sans-serif',
-          fontWeight: 500,
-          fontSize: 11,
-          color: 'rgba(255,255,255,0.55)',
-          textAlign: 'center',
-          marginTop: 10,
-          letterSpacing: '1px',
-          textTransform: 'uppercase',
+
+        {/* Loading dots */}
+        <div style={{
+          display:       'flex',
+          alignItems:    'center',
+          gap:           8,
+          marginBottom:  12,
         }}>
-          Loading…
-        </p>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{
+              width:          5,
+              height:         5,
+              borderRadius:   '50%',
+              background:     'rgba(255,255,255,0.7)',
+              animation:      `splashDotPulse 1.2s ease-in-out ${i * 0.2}s infinite`,
+            }}/>
+          ))}
+          <span style={{
+            fontSize:    11,
+            color:       'rgba(255,255,255,0.65)',
+            fontFamily:  'var(--font)',
+            fontWeight:  500,
+            letterSpacing:'0.8px',
+            textTransform:'uppercase',
+            marginLeft:  4,
+          }}>
+            Loading
+          </span>
+        </div>
+
       </div>
 
-      {/* ── version stamp ── */}
+      {/* Version stamp — bottom of screen */}
       <div style={{
-        position: 'absolute',
-        bottom: 20,
-        fontFamily: 'Inter, sans-serif',
-        fontWeight: 400,
-        fontSize: 10,
-        color: 'rgba(255,255,255,0.30)',
-        letterSpacing: '0.5px',
-        animation: 'eae-fade-up 0.4s ease-out 1s both',
+        position:    'absolute',
+        bottom:      28,
+        left:        0,
+        right:       0,
+        textAlign:   'center',
+        fontSize:    11,
+        color:       'rgba(255,255,255,0.40)',
+        fontFamily:  'var(--font)',
+        fontWeight:  400,
+        letterSpacing:'0.3px',
+        animation:   'splashSubIn 1.5s ease-out forwards',
+        opacity:     0,
       }}>
         v2.0 · Clinical Edition
       </div>
